@@ -1,3 +1,4 @@
+use std::borrow::BorrowMut;
 use std::time::{Duration, Instant};
 use cgmath::{InnerSpace, MetricSpace, Vector2, Zero};
 use rand::{Rng, thread_rng};
@@ -21,18 +22,18 @@ fn main() {
 
     let font: SfBox<Font> = Font::from_file("/usr/share/fonts/truetype/freefont/FreeMono.ttf").unwrap();
 
-    let mut width : f64 = 1000.;
-    let mut height: f64 = 1000.;
+    let mut width : f64 = 640.;
+    let mut height: f64 = 640.;
 
-    let mut window = RenderWindow::new((1000, 1000), "Physics", Style::default(), &Default::default());
+    let mut window = RenderWindow::new((640, 640), "Physics", Style::default(), &Default::default());
 
-    let mut physics_world = PhysicsWorld::new(width as u32, height as u32, 24);
+    let mut physics_world = PhysicsWorld::new(width as u32, height as u32);
 
-    for index in 0..100 {
+    for index in 0..20000 {
 
         physics_world.push_object(
             Circle::new(Vector2::new(thread_rng().gen_range(0.0..width), thread_rng().gen_range(0.0..height)),
-                        4., 1.), CircleShape::new(4., 16));
+                        1., 1.), CircleShape::new(1., 3));
         physics_world.get_object_mut(index).unwrap().set_velocity(Vector2::new(rand::thread_rng().gen_range(-1.0..1.), 0.));
 
     }
@@ -44,6 +45,26 @@ fn main() {
     let mut prev_mouse_pos = (0., 0.);
     let mut particle_grabbed_index = 0;
 
+    let width_clone = width.clone();
+    let height_clone = height.clone();
+
+    physics_world.set_update_predicate(Box::new(|object: &mut Circle| {
+        object.force(Vector2::new(0., 9.8 * 10. * object.get_mass()));
+
+        let clamped_position = Vector2::new(
+            object.get_position().x.clamp(0. + object.get_size(), 640. - object.get_size()),
+            object.get_position().y.clamp(0. + object.get_size(), 640. - object.get_size()));
+        object.set_raw_position(clamped_position);
+
+    }));
+
+    physics_world.set_draw_predicate(Box::new(|object: &Circle, shape: &mut CircleShape| {
+        shape.set_position(Vector2f::new(object.get_position().x as f32, object.get_position().y as f32));
+        shape.set_fill_color(Color::rgb((object.get_velocity().x * 255. * 8.).abs().min(255.) as u8,
+                                        (object.get_velocity().y * 255. * 8.).abs().min(255.) as u8,
+                                        0));
+    }));
+
     loop {
         window.clear(Color::BLACK);
 
@@ -51,32 +72,15 @@ fn main() {
 
         for i in 0..time_steps {
 
-            let mut first_object = physics_world.get_object_mut(0).unwrap();
-            first_object.set_position(Vector2::new(1000. / 64. * 32., 1000. / 64. * 32.));
-            first_object.set_velocity(Vector2::new(0., 0.));
-
             physics_world.update((1. / 60. / (time_steps as f64)));
 
-            for object_index in 0..physics_world.get_objects().len() {
+            if left_click_held {
 
-                let mut object = physics_world.get_object_mut(object_index).unwrap();
+                let mut object = &mut physics_world.get_object_mut(particle_grabbed_index).unwrap();
 
-                object.force(Vector2::new(0., 9.8 * 10. * object.get_mass()));
+                object.set_raw_position(Vector2::new(mouse_pos.0, mouse_pos.1));
+                object.set_prev_position(Vector2::new(prev_mouse_pos.0, prev_mouse_pos.1));
 
-                let clamped_position = Vector2::new(
-                    object.get_position().x.clamp(0. + object.get_size(), width - object.get_size()),
-                    object.get_position().y.clamp(0. + object.get_size(), height - object.get_size() ));
-                object.set_raw_position(clamped_position);
-
-                if left_click_held {
-
-                    let mut object = physics_world.get_object_mut(particle_grabbed_index).unwrap();
-
-                    object.set_raw_position(Vector2::new(mouse_pos.0, mouse_pos.1));
-                    object.set_prev_position(Vector2::new(prev_mouse_pos.0, prev_mouse_pos.1));
-
-
-                }
 
             }
 
